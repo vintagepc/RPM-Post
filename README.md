@@ -2,6 +2,11 @@
 Postprocessing scripts for BigBrain3D RPM
 
 This is very much a WIP early release. Advanced features like wipe-to-infill and wipe objects are currently not supported.
+I have written it with the intent of fully respecting all PrusaSlicer settings for toolchanges, e.g. ramming, purge volumes, cooling moves, etc.
+
+Initial script work is based on the work Gnat and I collaborated on in the Prusa Forums and Gitlab:
+https://gitlab.com/gnat.org/originalprusa/tree/master/devices/mmu2
+https://forum.prusaprinters.org/forum/original-prusa-i3-mmu2s-mmu2-general-discussion-announcements-and-releases/the-mmu2-purge-bucket-thread-mod-wip/
 
 ### NOTE: this will respect your prusaslicer purge volumes. I suggest being extra cautious when first using this as it is quite possible you won't need to purge as much as on the tower, and you may accidentally overload your purge mechanism, causing it to jam or break. Consider yourself warned, YMMV, I'm not responsible for printer damage, global thermonuclear war, family fallouts, or other side effects and coincidences that may arise from using this script.
 
