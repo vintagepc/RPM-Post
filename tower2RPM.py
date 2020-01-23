@@ -163,7 +163,7 @@ printObject = {"type":None, "gcode":[]};
 
 def purge_generate_RPM(length, maxrate):
 	_rpm_gcode = [];
-	_RPM_PURGE_SIZE = 20 # linear mm
+	_RPM_PURGE_SIZE = 40 # linear mm
 	_RPM_CYCLES = int(math.ceil(length/_RPM_PURGE_SIZE));
 	for i in range(0,_RPM_CYCLES): # Determine no. of purges we need to do
 		_rpm_gcode.append("; Purge cycle {} of {}".format(i+1,_RPM_CYCLES))
