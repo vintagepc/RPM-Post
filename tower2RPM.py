@@ -81,6 +81,7 @@ if "max_volumetric_speed" in settings:
 # Cheat to guess at the total number of tools available.
 # This doesn't tell us what is used, just what exists. But it is also useful for user retract values.
 retract_settings = settings["retract_length"].strip().split(",")
+retract_tc_settings = settings["retract_length_toolchange"].strip().split(",")
 retract_speed_settings = settings["retract_speed"].strip().split(",")
 filament_volumetric_settings = settings["filament_max_volumetric_speed"].strip().split(",")
 min_purge_settings =	settings["filament_minimal_purge_on_wipe_tower"].strip().split(",")
@@ -112,7 +113,8 @@ for tool in range(total_tools):
 	tools.append({
 		"filament_diameter": 0.0,
 		"purge": [],
-		"retract" : retract_settings[tool],
+		"retract" : float(retract_settings[tool]),
+		"retract_tc" : float(retract_tc_settings[tool]),
 		"retract_speed" : int(retract_speed_settings[tool])*60, # NOTE: *60 because F needs mm/min, PS gives mm/s
 		"min_purge_vol" : float(min_purge_settings[tool]),
 		"cooling_moves" : int(filament_cooling_moves_settings[tool]),
@@ -239,6 +241,10 @@ for line in fp:
 		cool_retract = -15 + printer["cooling_tube_pos"] + printer["cooling_tube_length"]/2;
 		park_retract = printer["filament_park_position"] - printer["cooling_tube_length"]/2 - printer["cooling_tube_pos"];
 		reload_distance = printer["filament_park_position"] + printer["extra_loading_move"]
+		
+		if fan_on:
+			# Turn the fan off while we purge to the bucket
+			gcode.append("M107")
 
 					
 		# NOTE: This is from the ramming parameters. They are volumetric rates in steps of 1/4 second. 
@@ -285,9 +291,6 @@ for line in fp:
 				bucket_purge = max(bucket_purge,min_length);
 				length = bucket_purge
 			
-		if fan_on:
-			# Turn the fan off while we purge to the bucket
-			gcode.append("M107")
 
 		gcode.append(line) # Reinsert toolchange/T-code
 		# TODO: support non-similar temperatures/true multi-material?
@@ -297,9 +300,10 @@ for line in fp:
 		gcode.append("G1 E{:.4f} F{:.0f}".format(reload_distance*.7,tools[tool]["end_load_speed"])) # Prime to the
 		gcode.append("G1 E{:.4f} F{:.0f}".format(reload_distance*.1,tools[tool]["end_load_speed"]*0.1)) # Prime to the
 		gcode.append("G4 S0; sync")
-		gcode.append("; Purge generate for {:.2f} mm at F {:.0f}".format(length,maxrate))
+		gcode.append("; Purge generate for {:.2f} mm ({:.2f}mm^3) at F {:.0f}".format(length,purge,maxrate))
 		# TODO - swap purge behaviour depending on mechanism.
 		gcode += purge_generate_RPM(length, maxrate)
+		gcode.append("G1 E-{:.4f} F{:.4f}; TC retract".format(tools[tool]["retract_tc"],tools[tool]["retract_speed"]))
 		gcode.append("M220 R")
 		gcode.append("G1 F6000") # context specific or always fixed?
 		gcode.append("G4 S0")
