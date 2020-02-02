@@ -12,15 +12,8 @@ def linspace(start, stop, n):
 		for i in range(n):
 				yield start + h * i
 
-# TODO: Generate purging from
-# ; wiping_volumes_extruders = 50,50,50,50,50,50,50,50,50,50
-# ; wiping_volumes_matrix = 0,100,100,100,100,100,0,100,100,100,100,100,0,100,100,100,100,100,0,100,100,100,100,100,0
+	
 
-# Simulate making the bed larger than reality with the
-# tower in the fake area.
-# The purpose is to simplify identifying the tower as
-# well as getting PrusaSlicer to give you more print
-# area (e.g. the full plate).
 MAX_X = 250
 K_VAL = 30	# NOTE: we extract user's filament K-val from gcode, but if it fails, sensible default.
 FAN_TIME = 12 #seconds From RPM docs, 12 second cooling burst.
@@ -88,6 +81,7 @@ if "max_volumetric_speed" in settings:
 # Cheat to guess at the total number of tools available.
 # This doesn't tell us what is used, just what exists. But it is also useful for user retract values.
 retract_settings = settings["retract_length"].strip().split(",")
+retract_tc_settings = settings["retract_length_toolchange"].strip().split(",")
 retract_speed_settings = settings["retract_speed"].strip().split(",")
 filament_volumetric_settings = settings["filament_max_volumetric_speed"].strip().split(",")
 min_purge_settings =	settings["filament_minimal_purge_on_wipe_tower"].strip().split(",")
@@ -119,7 +113,8 @@ for tool in range(total_tools):
 	tools.append({
 		"filament_diameter": 0.0,
 		"purge": [],
-		"retract" : retract_settings[tool],
+		"retract" : float(retract_settings[tool]),
+		"retract_tc" : float(retract_tc_settings[tool]),
 		"retract_speed" : int(retract_speed_settings[tool])*60, # NOTE: *60 because F needs mm/min, PS gives mm/s
 		"min_purge_vol" : float(min_purge_settings[tool]),
 		"cooling_moves" : int(filament_cooling_moves_settings[tool]),
@@ -166,6 +161,26 @@ done = False
 fan_on = False
 tc_id = 0;
 printObject = {"type":None, "gcode":[]};
+
+
+def purge_generate_RPM(length, maxrate):
+	_rpm_gcode = [];
+	_RPM_PURGE_SIZE = 40 # linear mm
+	_RPM_CYCLES = int(math.ceil(length/_RPM_PURGE_SIZE));
+	for i in range(0,_RPM_CYCLES): # Determine no. of purges we need to do
+		_rpm_gcode.append("; Purge cycle {} of {}".format(i+1,_RPM_CYCLES))
+		_rpm_gcode.append("G1 E{} F{:.1f}".format(_RPM_PURGE_SIZE,maxrate)) # These can't go much higher, else you start to skip/grind. Do the 40mm in one go.
+		_rpm_gcode.append("M106") # Turn the fan on to cool the purge to keep the strand straight for fewer jams.
+		_rpm_gcode.append("G4 S{:.0f}".format(FAN_TIME)) # TODO - split purge and do fan for part of it to speed things up?
+		if not fan_on:
+			_rpm_gcode.append("M107")# Turn the fan off again to resume the print
+		_rpm_gcode.append("G1 X{0:.1f} F12000".format(BUCKET_X-BUCKET_OFFSET)) # Bump the bucket twice. 
+		_rpm_gcode.append("G1 X{0:.1f} F3000".format(BUCKET_X))		
+		_rpm_gcode.append("G1 X{0:.1f} F10000".format(BUCKET_X-BUCKET_OFFSET))
+		if i != _RPM_CYCLES-1:
+			_rpm_gcode.append("G1 X{0:.1f} F3000".format(BUCKET_X)) # Return to bucket for next purge cycle.
+		_rpm_gcode.append("G4 S0; sync")			
+	return _rpm_gcode;
 
 fp = open(sys.argv[1], 'r')
 for line in fp:
@@ -226,6 +241,10 @@ for line in fp:
 		cool_retract = -15 + printer["cooling_tube_pos"] + printer["cooling_tube_length"]/2;
 		park_retract = printer["filament_park_position"] - printer["cooling_tube_length"]/2 - printer["cooling_tube_pos"];
 		reload_distance = printer["filament_park_position"] + printer["extra_loading_move"]
+		
+		if fan_on:
+			# Turn the fan off while we purge to the bucket
+			gcode.append("M107")
 
 					
 		# NOTE: This is from the ramming parameters. They are volumetric rates in steps of 1/4 second. 
@@ -272,14 +291,6 @@ for line in fp:
 				bucket_purge = max(bucket_purge,min_length);
 				length = bucket_purge
 			
-		step = round(length / 4.0, 4)
-		
-		step_purge_time = step/maxrate_mms; # Calc time taken to do purge sequence for fan timing.
-		step_fan_time = (5*step_purge_time) # 5 = 2 steps at full speed + 1 step @ 1/3 speed.
-
-		if fan_on:
-			# Turn the fan off while we purge to the bucket
-			gcode.append("M107")
 
 		gcode.append(line) # Reinsert toolchange/T-code
 		# TODO: support non-similar temperatures/true multi-material?
@@ -288,33 +299,11 @@ for line in fp:
 		# HACK: the speed constant here doesn't agree with the PS code's outuput, probably because it's also moving in X
 		gcode.append("G1 E{:.4f} F{:.0f}".format(reload_distance*.7,tools[tool]["end_load_speed"])) # Prime to the
 		gcode.append("G1 E{:.4f} F{:.0f}".format(reload_distance*.1,tools[tool]["end_load_speed"]*0.1)) # Prime to the
-		gcode.append("G4 S0")
-		gcode.append("G1 E{} F{:.1f}".format(step,maxrate)) # These can't go much higher, else you start to skip/grind.
-		gcode.append("M106") # Turn the fan on to cool the purge to keep the strand straight for fewer jams.
-		gcode.append("G1 E{} F{:.0f}".format(step,maxrate))
-		gcode.append("G1 E{} F{:.0f}".format(step,maxrate))
-		gcode.append("G1 E{} F{:.0f}".format(step,maxrate/3))
-		gcode.append("G4 S{:.0f}".format(step_fan_time)) # 12 - time taken for previous 3 lines seconds of fan;
-
-		
-
-
-		if not fan_on:
-			# Turn the fan off again to resume the print
-			gcode.append("M107")
-		
-		#	if last["Z"] < 150.0:
-		#		z_hop = last["Z"] + 50.0
-		#		if last["Z"] < 20.0:
-		#			z_hop = 70.0
-		# back off and retrigger the bucket in case there's a nozzle wiper attached.
-		gcode.append("G1 X{0:.1f} F12000".format(BUCKET_X-BUCKET_OFFSET))
-		gcode.append("G1 X{0:.1f} F3000".format(BUCKET_X))		
-		# Add a hop to help clear the bucket
-		gcode.append("G1 X{0:.1f} F10000".format(BUCKET_X-BUCKET_OFFSET))
-		#gcode.append("G1 Z{} F10000".format(z_hop))
-		gcode.append("G4 S0")
-
+		gcode.append("G4 S0; sync")
+		gcode.append("; Purge generate for {:.2f} mm ({:.2f}mm^3) at F {:.0f}".format(length,purge,maxrate))
+		# TODO - swap purge behaviour depending on mechanism.
+		gcode += purge_generate_RPM(length, maxrate)
+		gcode.append("G1 E-{:.4f} F{:.4f}; TC retract".format(tools[tool]["retract_tc"],tools[tool]["retract_speed"]))
 		gcode.append("M220 R")
 		gcode.append("G1 F6000") # context specific or always fixed?
 		gcode.append("G4 S0")
