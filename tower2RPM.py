@@ -162,7 +162,7 @@ fan_on = False
 tc_id = 0;
 printObject = {"type":None, "gcode":[]};
 
-
+# Generates a purge for the RPM mechanism from BB3D 
 def purge_generate_RPM(length, maxrate):
 	_rpm_gcode = [];
 	_RPM_PURGE_SIZE = 40 # linear mm
@@ -170,16 +170,46 @@ def purge_generate_RPM(length, maxrate):
 	for i in range(0,_RPM_CYCLES): # Determine no. of purges we need to do
 		_rpm_gcode.append("; Purge cycle {} of {}".format(i+1,_RPM_CYCLES))
 		_rpm_gcode.append("G1 E{} F{:.1f}".format(_RPM_PURGE_SIZE,maxrate)) # These can't go much higher, else you start to skip/grind. Do the 40mm in one go.
-		_rpm_gcode.append("M106") # Turn the fan on to cool the purge to keep the strand straight for fewer jams.
-		_rpm_gcode.append("G4 S{:.0f}".format(FAN_TIME)) # TODO - split purge and do fan for part of it to speed things up?
-		if not fan_on:
-			_rpm_gcode.append("M107")# Turn the fan off again to resume the print
+		_rpm_gcode.append("M106") # Turn the fan on to cool the purge
+		_rpm_gcode.append("G4 S{:.0f}".format(FAN_TIME))
+		if i !=_RPM_CYCLES-1 or not fan_on:
+			_rpm_gcode.append("M107")# Turn the fan off again to resume the print or for the next purge
 		_rpm_gcode.append("G1 X{0:.1f} F12000".format(BUCKET_X-BUCKET_OFFSET)) # Bump the bucket twice. 
 		_rpm_gcode.append("G1 X{0:.1f} F3000".format(BUCKET_X))		
 		_rpm_gcode.append("G1 X{0:.1f} F10000".format(BUCKET_X-BUCKET_OFFSET))
 		if i != _RPM_CYCLES-1:
 			_rpm_gcode.append("G1 X{0:.1f} F3000".format(BUCKET_X)) # Return to bucket for next purge cycle.
+			
 		_rpm_gcode.append("G4 S0; sync")			
+	return _rpm_gcode;
+
+# Generates a ramming sequence for the BB3D purge mechanism.
+def ram_generate_RPM(ram_tool):
+	_rpm_gcode = [];
+	_ram_lens = [];
+	_ram_total = 0.0;
+	_RPM_PURGE_SIZE = 40 # linear mm
+	_tool_linmm_per_mmcubed = (math.pi*math.pow(0.5*ram_tool["filament_diameter"],2))
+	# Calc max linear feedrate from volumetric:
+	_maxrate_mms = ram_tool["max_vol_rate"]/_tool_linmm_per_mmcubed;
+	_maxrate = _maxrate_mms*60.0;
+	# NOTE: This is from the ramming parameters. They are volumetric rates in steps of 1/4 second.	 
+	for ramrate in ram_tool["ramming_parameters"]:
+		# Rate is mm^3/sec, for 1/4 second of it, calculate the linear distance.
+		ram_len = (0.25*ramrate)/_tool_linmm_per_mmcubed;
+		_ram_lens.append(ram_len);
+		_ram_total +=ram_len;
+	# Pre-purge so the total ram is 40mm
+	_rpm_gcode.append("; Ramming RPM: {:.2f} mm".format(_ram_total))
+	_rpm_gcode.append("G1 E{} F{:.1f}".format(_RPM_PURGE_SIZE-_ram_total,_maxrate)) # These can't go much higher, else you start to skip/grind. Do the 40mm in one go.
+	for ram_len in _ram_lens:
+		# ESpeed is (length/time)*60 for linear mm/min. This will be lower than PS since we don't move X/Y.
+		ram_speed_f = (ram_len/0.25)*60 
+		_rpm_gcode.append("G1 E{:.4f} F{:.0f}".format(ram_len,ram_speed_f))
+		
+	_rpm_gcode.append("M106") # Turn the fan on to cool the purge
+	_rpm_gcode.append("G4 S{:.0f}".format(FAN_TIME))
+	_rpm_gcode.append("M107") # Fan off in prep for next colour purge.
 	return _rpm_gcode;
 
 fp = open(sys.argv[1], 'r')
@@ -229,10 +259,12 @@ for line in fp:
 		else:
 			zMove = ""
 
-		# Move to edge fast, but push the trigger slowly
-		# TODO: What is slowly and is it really needed?
+		
+		if fan_on: # Kill fan while still over print, it takes time to wind down. Should be off by the time we bucket.
+			gcode.append("M107")
+		
 		gcode.append("G1 X{:.3f} {} F10000".format(BUCKET_X-BUCKET_OFFSET,zMove)) # TODO: Make speed configurable
-		gcode.append("G1 X{:.3f} F1000".format(BUCKET_X)) # TODO: Make trigger position configurable
+		gcode.append("G1 X{:.3f} F1000".format(BUCKET_X))
 
 	
 		prev_tool =tools[last["T"]];
@@ -241,21 +273,9 @@ for line in fp:
 		cool_retract = -15 + printer["cooling_tube_pos"] + printer["cooling_tube_length"]/2;
 		park_retract = printer["filament_park_position"] - printer["cooling_tube_length"]/2 - printer["cooling_tube_pos"];
 		reload_distance = printer["filament_park_position"] + printer["extra_loading_move"]
+	
+		gcode += ram_generate_RPM(prev_tool)
 		
-		if fan_on:
-			# Turn the fan off while we purge to the bucket
-			gcode.append("M107")
-
-					
-		# NOTE: This is from the ramming parameters. They are volumetric rates in steps of 1/4 second. 
-		ram_speeds = [];
-		for ramrate in tools[last["T"]]["ramming_parameters"]:
-			# Rate is mm^3/sec, for 1/4 second of it, calculate the linear distance.
-			ram_len = (0.25*ramrate)/(math.pi * math.pow(0.5*tools[last["T"]]["filament_diameter"],2));
-			# ESpeed is (length/time)*60 for linear mm/min. This will be lower than PS since we don't move X/Y.
-			ram_speed_f = (ram_len/0.25)*60 
-			gcode.append("G1 E{:.4f} F{:.0f} ; {:.4f} mm^3/sec for 0.25 sec".format(ram_len,ram_speed_f,ramrate))
-
 		# This is the retract and cooling move stuff, the consts are from PS's wipetower code.
 		gcode.append("G1 E-15.000 F{}".format(prev_tool["start_unload_speed"]))
 		gcode.append("G1 E-{:.4f} F{}".format(cool_retract*0.7,prev_tool["end_unload_speed"]))
