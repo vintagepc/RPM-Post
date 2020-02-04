@@ -210,6 +210,10 @@ def ram_generate_RPM(ram_tool):
 	_rpm_gcode.append("M106") # Turn the fan on to cool the purge
 	_rpm_gcode.append("G4 S{:.0f}".format(FAN_TIME))
 	_rpm_gcode.append("M107") # Fan off in prep for next colour purge.
+	_rpm_gcode.append("G1 X{0:.1f} F12000".format(BUCKET_X-BUCKET_OFFSET)) # Bump the bucket twice. 
+	_rpm_gcode.append("G1 X{0:.1f} F3000".format(BUCKET_X))		
+	_rpm_gcode.append("G1 X{0:.1f} F12000".format(BUCKET_X-BUCKET_OFFSET)) # Bump the bucket twice. 
+	_rpm_gcode.append("G1 X{0:.1f} F3000".format(BUCKET_X))		
 	return _rpm_gcode;
 
 fp = open(sys.argv[1], 'r')
