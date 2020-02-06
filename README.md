@@ -17,6 +17,7 @@ To use:
 - Set the following as your custom toolchange g-code: 
       `T[next_extruder]; RPM FROM [previous_extruder]`
 ![Toolchange G-code](images/toolchange_gcode.png)
+- If you need to change motor currents to prevent stalling/skipping on the bucket mechanism, simply prefix and postfix the T command above with your `M907` motor current values. 
 - If your purge mechanism activates at X 250 or below, you will need to adjust the size of the default prime line. It goes to X=240. The postprocessing script will fail if it detects gcode that tries to print in a "danger zone" near the mechanism activation, i.e. your BUCKET_X - 10mm. If run via console, it will print out the first offending line of gcode that exceeded the bounds. 
 - Run the script. You can set this as a processing script in PrusaSlicer, but I suggest using the console first for easier debugging.
     python tower2RPM.py [myfile.gcode] > [outfile.gcode]
