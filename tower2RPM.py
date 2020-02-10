@@ -76,7 +76,10 @@ if "wipe_into_infill" in settings and \
 	WIPING_OBJECTS = 0;
 
 if "max_volumetric_speed" in settings:
-	PRINTER_MAX_VOLUMETRIC = min(float(settings["max_volumetric_speed"]),PRINTER_MAX_VOLUMETRIC)
+	if settings["max_volumetric_speed"] == "0":
+		print("WARNING: Your print max volumetric speed is unconfigured. Using 15mm³/sec",sys.stderr)
+	else:
+		PRINTER_MAX_VOLUMETRIC = min(float(settings["max_volumetric_speed"]),PRINTER_MAX_VOLUMETRIC)
 
 # Cheat to guess at the total number of tools available.
 # This doesn't tell us what is used, just what exists. But it is also useful for user retract values.
