@@ -84,6 +84,7 @@ if "max_volumetric_speed" in settings:
 # Cheat to guess at the total number of tools available.
 # This doesn't tell us what is used, just what exists. But it is also useful for user retract values.
 retract_settings = settings["retract_length"].strip().split(",")
+filament_diameter = settings["filament_diameter"].strip().split(",")
 retract_tc_settings = settings["retract_length_toolchange"].strip().split(",")
 retract_speed_settings = settings["retract_speed"].strip().split(",")
 filament_volumetric_settings = settings["filament_max_volumetric_speed"].strip().split(",")
@@ -114,7 +115,7 @@ printer = {
 tools = []
 for tool in range(total_tools):
 	tools.append({
-		"filament_diameter": 0.0,
+		"filament_diameter": float(filament_diameter[tool]),
 		"purge": [],
 		"retract" : float(retract_settings[tool]),
 		"retract_tc" : float(retract_tc_settings[tool]),
@@ -147,12 +148,6 @@ for value in settings["wiping_volumes_matrix"].split(","):
 	
 	tools[tool]["purge"].append(value)
 	t += 1
-
-for setting in ["filament_diameter"]:
-	tool = 0
-	for value in settings[setting].split(","):		
-		tools[tool][setting] = float(value)
-		tool += 1
 
 gcode = []
 if WIPING_OBJECTS:
