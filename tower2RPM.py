@@ -20,15 +20,15 @@ FAN_TIME = 12 #seconds From RPM docs, 12 second cooling burst.
 BUCKET_X = 253 # A sensible default, set "; BUCKET_X ###.# in your start gcode to configure.
 BUCKET_OFFSET=10 # Position to move to before triggering the RPM.
 PRINTER_MAX_VOLUMETRIC = 15 #mm^3/s. Use PS default, we min with the actual setting and filament setting later.
-WIPING_OBJECTS = 0;
+WIPING_OBJECTS = 0
 
 # pre-read to get print settings
 settings = {}
 object_purge = {}
 current_tc = ""
-current_in_purge = 0;
+current_in_purge = 0
 setting_re = re.compile(r'^\s*;\s*(\S+?)\s*=\s*(.*)$')
-extruder_re = re.compile(r'E(\d+\.\d+)');
+extruder_re = re.compile(r'E(\d+\.\d+)')
 fp = open(sys.argv[1], 'r')
 for line in fp:
 	line = line.strip()
@@ -40,7 +40,7 @@ for line in fp:
 		current_tc = line.strip()
 		object_purge[current_tc] = 0
 	if current_tc and line.startswith("M900 K") and line.endswith("; Filament gcode"):
-		current_in_purge = 1;
+		current_in_purge = 1
 	if current_in_purge and match_E:
 		object_purge[current_tc] += float(match_E.group(1))
 	if "; PURGING FINISHED" in line:
@@ -68,12 +68,12 @@ if "single_extruder_multi_material" not in settings or \
 if "wipe_into_objects" in settings and \
 	settings["wipe_into_objects"] == "1":
 	print >> sys.stderr, "WARNING: Wiping into objects is not supported and may not work as expected/desired."
-	WIPING_OBJECTS = 0;
+	WIPING_OBJECTS = 0
 
 if "wipe_into_infill" in settings and \
 	settings["wipe_into_infill"] == "1":
 	print >> sys.stderr, "WARNING: Wiping into infill is not supported and may not work as expected/desired."
-	WIPING_OBJECTS = 0;
+	WIPING_OBJECTS = 0
 
 if "max_volumetric_speed" in settings:
 	if settings["max_volumetric_speed"] == "0":
@@ -100,7 +100,7 @@ filament_ramming_settings =	settings["filament_ramming_parameters"].strip().spli
 bottom_solid_layers = int(settings["bottom_solid_layers"].strip())
 layer_height = float(settings["layer_height"].strip())
 # We need this because of issue 2855 in PrusaSlicer...
-LAST_SOLID_Z = bottom_solid_layers*layer_height;
+LAST_SOLID_Z = bottom_solid_layers*layer_height
 
 total_tools = len(retract_settings)
 
@@ -133,8 +133,8 @@ for tool in range(total_tools):
 	})
 	tmp_ram = filament_ramming_settings[tool].strip().split("|")
 	for val in tmp_ram[0].strip().split(" "):
-		tools[tool]["ramming_parameters"].append(float(val.strip("\"")));
-	del tools[tool]["ramming_parameters"][:2]; # First two are mostly useless here.
+		tools[tool]["ramming_parameters"].append(float(val.strip("\"")))
+	del tools[tool]["ramming_parameters"][:2] # First two are mostly useless here.
 
 
 tool = 0
@@ -151,20 +151,20 @@ for value in settings["wiping_volumes_matrix"].split(","):
 
 gcode = []
 if WIPING_OBJECTS:
-	gcode.append("Object/infill wiping detected!");
+	gcode.append("Object/infill wiping detected!")
 tower = {"type": None, "gcode": []}
 skip = 0
 last = {"X": 0.0, "Y": 0.0, "Z": 0.0, "K": "M900 K{}".format(K_VAL)}
 done = False
 fan_on = False
-tc_id = 0;
-printObject = {"type":None, "gcode":[]};
+tc_id = 0
+printObject = {"type":None, "gcode":[]}
 
 
 def purge_generate_RPM(length, maxrate):
-	_rpm_gcode = [];
+	_rpm_gcode = []
 	_RPM_PURGE_SIZE = 40 # linear mm
-	_RPM_CYCLES = int(math.ceil(length/_RPM_PURGE_SIZE));
+	_RPM_CYCLES = int(math.ceil(length/_RPM_PURGE_SIZE))
 	for i in range(0,_RPM_CYCLES): # Determine no. of purges we need to do
 		_rpm_gcode.append("; Purge cycle {} of {}".format(i+1,_RPM_CYCLES))
 		_rpm_gcode.append("G1 E{} F{:.1f}".format(_RPM_PURGE_SIZE,maxrate)) # These can't go much higher, else you start to skip/grind. Do the 40mm in one go.
@@ -178,7 +178,7 @@ def purge_generate_RPM(length, maxrate):
 		if i != _RPM_CYCLES-1:
 			_rpm_gcode.append("G1 X{0:.1f} F3000".format(BUCKET_X)) # Return to bucket for next purge cycle.
 		_rpm_gcode.append("G4 S0; sync")			
-	return _rpm_gcode;
+	return _rpm_gcode
 
 fp = open(sys.argv[1], 'r')
 for line in fp:
@@ -193,7 +193,7 @@ for line in fp:
 	
 	if line.startswith("; BUCKET_X"):
 		BUCKET_X = float(line[10:])
-		MAX_X = BUCKET_X - BUCKET_OFFSET;
+		MAX_X = BUCKET_X - BUCKET_OFFSET
 	
 	if line.startswith("M106"):
 		fan_on = True
@@ -203,7 +203,7 @@ for line in fp:
 				
 	if line.startswith("T") and "RPM FROM -1" in line:
 		gcode.append(line)
-		continue;
+		continue
 		
 	# The K here is the filament custom gcode K value for linear advance. Typ. 30 but not guaranteed if the user has tuned it.
 	if line.startswith("T") and "; RPM FROM" in line:
@@ -215,9 +215,9 @@ for line in fp:
 		gcode.append("; ------------------------")
 		gcode.append("; BUCKET TOOL CHANGE START")
 		if tc_id:
-			gcode.append("; toolchange #{}".format(tc_id));
+			gcode.append("; toolchange #{}".format(tc_id))
 			
-		tc_id+=1;
+		tc_id+=1
 			
 		gcode.append("M220 B")
 		gcode.append("M220 S100")
@@ -233,11 +233,11 @@ for line in fp:
 		gcode.append("G1 X{:.3f} F1000".format(BUCKET_X)) # TODO: Make trigger position configurable
 
 	
-		prev_tool =tools[last["T"]];
+		prev_tool =tools[last["T"]]
 		# Cooling tube math:
 		cooling_steps = linspace(prev_tool["start_cool_speed"],prev_tool["end_cool_speed"],2*prev_tool["cooling_moves"])
-		cool_retract = -15 + printer["cooling_tube_pos"] + printer["cooling_tube_length"]/2;
-		park_retract = printer["filament_park_position"] - printer["cooling_tube_length"]/2 - printer["cooling_tube_pos"];
+		cool_retract = -15 + printer["cooling_tube_pos"] + printer["cooling_tube_length"]/2
+		park_retract = printer["filament_park_position"] - printer["cooling_tube_length"]/2 - printer["cooling_tube_pos"]
 		reload_distance = printer["filament_park_position"] + printer["extra_loading_move"]
 		
 		if fan_on:
@@ -246,10 +246,10 @@ for line in fp:
 
 					
 		# NOTE: This is from the ramming parameters. They are volumetric rates in steps of 1/4 second. 
-		ram_speeds = [];
+		ram_speeds = []
 		for ramrate in tools[last["T"]]["ramming_parameters"]:
 			# Rate is mm^3/sec, for 1/4 second of it, calculate the linear distance.
-			ram_len = (0.25*ramrate)/(math.pi * math.pow(0.5*tools[last["T"]]["filament_diameter"],2));
+			ram_len = (0.25*ramrate)/(math.pi * math.pow(0.5*tools[last["T"]]["filament_diameter"],2))
 			# ESpeed is (length/time)*60 for linear mm/min. This will be lower than PS since we don't move X/Y.
 			ram_speed_f = (ram_len/0.25)*60 
 			gcode.append("G1 E{:.4f} F{:.0f} ; {:.4f} mm^3/sec for 0.25 sec".format(ram_len,ram_speed_f,ramrate))
@@ -264,7 +264,7 @@ for line in fp:
 		for move in cooling_steps:
 			gcode.append("G1 E{:.3f} F{}".format(printer["cooling_tube_length"],move))
 			gcode.append("G1 E-{:.3f} F{}".format(printer["cooling_tube_length"],next(cooling_steps)))
-		gcode.append("G1 E-{:.4f} F2000".format(park_retract));
+		gcode.append("G1 E-{:.4f} F2000".format(park_retract))
 		gcode.append("G4 S0")
 
 		purge = tools[last["T"]]["purge"][tool]
@@ -272,11 +272,11 @@ for line in fp:
 		retract = tools[tool]["retract"]
 		retract_speed = tools[tool]["retract_speed"]
 		vol_rate = tools[tool]["max_vol_rate"]
-		min_purge = tools[tool]["min_purge_vol"];
+		min_purge = tools[tool]["min_purge_vol"]
 		
 		# Calc max linear feedrate from volumetric:
-		maxrate_mms = vol_rate/(math.pi*math.pow(0.5*diameter,2));
-		maxrate = maxrate_mms*60.0;
+		maxrate_mms = vol_rate/(math.pi*math.pow(0.5*diameter,2))
+		maxrate = maxrate_mms*60.0
 		length = purge / (math.pi * math.pow(0.5*diameter, 2))
 		min_length = min_purge / (math.pi * math.pow(0.5*diameter, 2))
 		if WIPING_OBJECTS and last["tc_id"] in object_purge.keys():
@@ -284,9 +284,9 @@ for line in fp:
 				gcode.append("; BAD PURGE DETECTED - Plicer issue #2855. Ignoring.")
 			else:
 				gcode.append("; {} wipe: object holds {} mm".format(last["tc_id"], object_purge[last["tc_id"]]))
-				bucket_purge = length - object_purge[last["tc_id"]];
+				bucket_purge = length - object_purge[last["tc_id"]]
 				gcode.append("; {:.4f} mm in bucket (min {:.2f}), remainder in infill/object ".format(bucket_purge,min_length))
-				bucket_purge = max(bucket_purge,min_length);
+				bucket_purge = max(bucket_purge,min_length)
 				length = bucket_purge
 			
 
