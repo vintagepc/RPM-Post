@@ -77,7 +77,7 @@ if "wipe_into_infill" in settings and \
 
 if "max_volumetric_speed" in settings:
 	if settings["max_volumetric_speed"] == "0":
-		print("WARNING: Your print max volumetric speed is unconfigured. Using 15mm³/sec",sys.stderr)
+		print >> sys.stderr, "WARNING: Your print max volumetric speed is unconfigured. Using 15mm3/sec"
 	else:
 		PRINTER_MAX_VOLUMETRIC = min(float(settings["max_volumetric_speed"]),PRINTER_MAX_VOLUMETRIC)
 
@@ -301,14 +301,26 @@ for line in fp:
 		gcode.append("; Purge generate for {:.2f} mm ({:.2f}mm^3) at F {:.0f}".format(length,purge,maxrate))
 		# TODO - swap purge behaviour depending on mechanism.
 		gcode += purge_generate_RPM(length, maxrate)
-		gcode.append("G1 E-{:.4f} F{:.4f}; TC retract".format(tools[tool]["retract_tc"],tools[tool]["retract_speed"]))
+		# HACK - There's a PS bug here where sometimes it won't use TC_retract after a toolchange. We peek ahead
+		# to work aroud it. 
+		_peekAhead = []
+		_nextLine = "";
+		while (not _nextLine.startswith("G1 E")):
+			_nextLine = next(fp)
+			_peekAhead.append(_nextLine)
+
+		_splitLine = _nextLine.split(" ")
+		if (float(_splitLine[1][1:]) <0): # Bug is a random normal ret/unret combo instead of TC retract. Do nothing.
+			gcode.append("; PS bug detected, not retracting...")
+		else:
+			gcode.append("G1 E-{:.4f} F{:.4f}; TC retract".format(tools[tool]["retract_tc"],tools[tool]["retract_speed"]))
 		gcode.append("M220 R")
 		gcode.append("G1 F6000") # context specific or always fixed?
 		gcode.append("G4 S0")
 		gcode.append("G92 E0")
 		gcode.append("; BUCKET TOOL CHANGE END")
 		gcode.append("; ----------------------")
-		
+		gcode += _peekAhead
 		continue
 	
 
