@@ -380,4 +380,10 @@ for line in fp:
 
 fp.close()
 
-print ("\n".join(gcode))
+if len(sys.argv) > 2:
+	fp = open(sys.argv[2], 'w')
+else:
+	fp = open(sys.argv[1], 'w')
+	
+fp.write("\n".join(gcode))
+fp.close()
